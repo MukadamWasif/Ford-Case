@@ -1,0 +1,183 @@
+---
+title: "Ford Ka"
+author: "Wasif Mukadam"
+date: "2022-11-28"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(caret)
+library(e1071)
+library(kernlab)
+library(randomForest)
+library(class)
+library(tidyr)
+library(neuralnet)
+library(cluster)
+library(factoextra)
+library(Boruta)
+```
+
+```{r}
+# loading data
+demo <- read.csv("FordKa_demographic.csv")
+psych <-read.csv("FordKa_psychographic.csv")
+```
+
+```{r}
+#Merging the two data sets provided
+dta_all <- merge(demo, psych, by = c("Respondent.Number"), all.x = TRUE)
+my_dta <- dta_all
+str(dta_all)
+
+dta_all[ ,3:10] <- lapply(dta_all[,c(3:10)], as.factor)
+```
+
+```{r}
+# binary variable 
+dta_all$pref.choosers <- ifelse(dta_all$preference == 1, 1, 0)
+my_dta$pref.choosers <- ifelse(my_dta$preference == 1, 1, 0)
+#allocating 75%
+set.seed(9)
+train.index <- sample(1:nrow(dta_all), 0.75 * nrow(dta_all))
+train.dta <- dta_all[train.index, ]
+test.dta <- dta_all[-train.index, ]
+
+```
+
+```{r}
+#Loistic regression 
+ford.ka.glm <- glm(pref.choosers ~ .- Respondent.Number - preference - Age - Children, data = train.dta, family = "binomial")
+summary(ford.ka.glm)
+
+#Stepwise feature selection
+fit.logit <- step(ford.ka.glm, direction = "both")
+summary(fit.logit)
+
+#Predict using the test set
+
+ford.ka.f <- formula(pref.choosers ~ Gender + FirstPurchase + ChildCat + Q5 +Q7 + Q12 + Q20 + Q29 + Q30 + Q34 + Q39 + Q49 + Q52)
+fit.logit.final <- glm(ford.ka.f, data = train.dta, family = "binomial")
+summary(fit.logit.final)
+
+logit.pred.prob.train <- predict(fit.logit.final, newdata = train.dta, type = "response")
+logit.pred.train <- ifelse(logit.pred.prob.train > 0.5, 1, 0)
+mean(logit.pred.train != train.dta$pref.choosers)
+confusionMatrix(as.factor(logit.pred.train), as.factor(train.dta$pref.choosers), mode = "everything")
+
+
+logit.pred.prob <- predict(fit.logit.final, newdata = test.dta, type = "response")
+logit.pred <- ifelse(logit.pred.prob > 0.5, 1, 0)
+mean(logit.pred != test.dta$pref.choosers)
+confusionMatrix(as.factor(logit.pred), as.factor(test.dta$pref.choosers), mode = "everything")
+```
+
+```{r}
+#SVM
+set.seed(999)
+
+normalize <- function(x) {
+  num <- x - min(x)
+  denom <- max(x) - min(x)
+  return (num/denom)
+}
+ my_mean <- function(x){
+   
+   return (y)
+ }
+
+
+Norm_Ford <- my_dta
+Norm_Ford[, c(4:72)] <-as.data.frame(lapply(my_dta[4:72], normalize))
+Norm_Ford <- Norm_Ford[,-c(1,4,6)]
+head(Norm_Ford)
+
+# 70% train and 30% test
+split.sample <- sample(2, nrow(Norm_Ford), replace=TRUE, prob=c(0.7, 0.3))
+trainset <- Norm_Ford[split.sample==1,]
+testset <- Norm_Ford[split.sample==2,]  
+
+Ford.svm <- svm(pref.choosers ~.-preference, data = trainset, cost = 0.01, kernel = 'linear')
+
+
+Ford.svm$coefs
+Ford.svm$SV
+
+w <- t(Ford.svm$coefs) %*% 
+  Ford.svm$SV                 # weight vectors
+w <- apply(w, 2, function(v){sqrt(sum(v^2))})  # weight
+w <- sort(w, decreasing = T)
+print(w)
+ 
+#SVM train error prediction 
+Ford.svm.train <- predict(Ford.svm,trainset)
+Ford.svm.train.predict<-ifelse(Ford.svm.train>0.5,1,0)
+Ford.svm.train.error <- mean(Ford.svm.train.predict!=trainset$pref.choosers)
+Ford.svm.train.error
+confusionMatrix(as.factor(Ford.svm.train.predict),as.factor(trainset$pref.choosers))
+#tree test error prediction 
+Ford.svm.test <- predict(Ford.svm,testset)
+Ford.svm.test.predict<-ifelse(Ford.svm.test>0.5,1,0)
+Ford.svm.test.error <- mean(Ford.svm.test.predict!=testset$pref.choosers)
+Ford.svm.test.error
+confusionMatrix(as.factor(Ford.svm.test.predict),as.factor(testset$pref.choosers))
+```
+
+```{r}
+#Random Forest
+Ford.rf <- randomForest(pref.choosers ~.-preference, data = train.dta, importance = TRUE)
+summary(Ford.rf)
+varImpPlot(Ford.rf)
+
+# train dataset 
+train.test.rf <- predict(Ford.rf, newdata = train.dta)
+train.test.rf.pred <- ifelse(train.test.rf > 0.5, 1, 0)
+table(train.test.rf.pred, train.dta$pref.choosers)
+mean(train.test.rf.pred != train.dta$pref.choosers)
+confusionMatrix(as.factor(train.test.rf.pred), as.factor(train.dta$pref.choosers))
+
+# test dataset 
+test.test.rf <- predict(Ford.rf, newdata = test.dta)
+test.test.rf.pred <- ifelse(test.test.rf > 0.5, 1, 0)
+table(test.test.rf.pred, test.dta$pref.choosers)
+mean(test.test.rf.pred != test.dta$pref.choosers)
+confusionMatrix(as.factor(test.test.rf.pred), as.factor(test.dta$pref.choosers))
+```
+
+
+```{r}
+#Exploratory analysis
+#Clustering 
+
+Norm_Ford <- Norm_Ford[,-c(1)]
+cls1 <- kmeans(Norm_Ford, 3, iter.max = 1000, nstart = 20)
+fviz_cluster(cls1, data = Norm_Ford)
+cls1$centers
+
+print(cls1)
+cls1$withinss
+cls1$totss
+cls1$betweenss
+cls1$cluster[cls1$cluster==1]
+cls1$cluster[cls1$cluster==2]
+cls1$cluster[cls1$cluster==3]
+
+barplot(cls1$centers[1,], main="cluster 1", las=2)
+barplot(cls1$centers[2,], main="cluster 2")
+barplot(cls1$centers[3,], main="cluster 3")
+
+
+table(cls1$cluster, Norm_Ford$pref.choosers)
+as.numeric(table(cls1$centers))
+
+
+
+```
+
+```{r}
+
+```
