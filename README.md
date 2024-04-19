@@ -1,1 +1,2 @@
 # Ford-Case
+In response to evolving environmental and demographic shifts in the European market, Ford embarked on developing the compact Ford Ka. This initiative aimed to cater to the increasing demand for smaller, more fuel-efficient vehicles. The market research conducted encompassed both demographic and psychographic data to effectively segment and target potential customers for the Ford Ka. Through predictive and exploratory analyses, insights were gleaned to optimize market strategies and identify the target demographic for the new product.
